@@ -1,13 +1,15 @@
 import argparse
 import configparser
-import os
-import sys
+import datetime
 import logging
+import os
 import platform
-import subprocess
+import random
+import sys
+import time
 
 try:
-    import urlparse
+    from urllib.parse import urlparse
     import pil
     import auth
     import logger
@@ -19,7 +21,6 @@ try:
     from constants import Constants
     from comments import CommentsDownloader
 except ImportError:
-    from urllib.parse import urlparse
     from . import pil
     from . import auth
     from . import logger
@@ -30,6 +31,9 @@ except ImportError:
     from . import organize
     from .constants import Constants
     from .comments import CommentsDownloader
+
+ISOTIMEFORMAT = '%Y-%m-%d-%H:%M'
+
 
 def validate_inputs(config, args, unknown_args):
     error_arr = []
@@ -44,7 +48,6 @@ def validate_inputs(config, args, unknown_args):
                 logger.warn("Custom config path is invalid, falling back to default path: {:s}".format(pil.config_path))
                 pil.config_path = os.path.join(os.getcwd(), "pyinstalive.ini")
                 logger.separator()
-
 
         if not os.path.isfile(pil.config_path):  # Create new config if it doesn't exist
             if not banner_shown:
@@ -98,9 +101,8 @@ def validate_inputs(config, args, unknown_args):
             logger.warn('    ' + ' '.join(unknown_args))
             logger.separator()
 
-
-        pil.ig_user = config.get('pyinstalive', 'username')
-        pil.ig_pass = config.get('pyinstalive', 'password')
+        pil.ig_user = config.get('pyinstalive', 'username').split(',')
+        pil.ig_pass = config.get('pyinstalive', 'password').split(',')
         pil.dl_path = config.get('pyinstalive', 'download_path')
         pil.run_at_start = config.get('pyinstalive', 'run_at_start')
         pil.run_at_finish = config.get('pyinstalive', 'run_at_finish')
@@ -265,8 +267,8 @@ def run():
     logging.disable(logging.CRITICAL)
     config = configparser.ConfigParser()
     parser = argparse.ArgumentParser(
-        description="You are running PyInstaLive {:s} using Python {:s}".format(Constants.SCRIPT_VER,
-                                                                                Constants.PYTHON_VER))
+            description="You are running PyInstaLive {:s} using Python {:s}".format(Constants.SCRIPT_VER,
+                                                                                    Constants.PYTHON_VER))
 
     parser.add_argument('-u', '--username', dest='username', type=str, required=False,
                         help="Instagram username to login with.")
@@ -274,6 +276,8 @@ def run():
                         help="Instagram password to login with.")
     parser.add_argument('-d', '--download', dest='download', type=str, required=False,
                         help="The username of the user whose livestream or replay you want to save.")
+    parser.add_argument('-st', '--sleep', dest='sleeptime', type=int, required=False,
+                        help="Example: '-st 60'. Time interval of requests. Default Time is 60(s)")
     parser.add_argument('-b,', '--batch-file', dest='batchfile', type=str, required=False,
                         help="Read a text file of usernames to download livestreams or replays from.")
     parser.add_argument('-i', '--info', dest='info', action='store_true', help="View information about PyInstaLive.")
@@ -297,8 +301,10 @@ def run():
     parser.add_argument('-nhb', '--no-heartbeat', dest='noheartbeat', action='store_true', help="Disable heartbeat "
                                                                                                 "check for "
                                                                                                 "livestreams.")
-    parser.add_argument('-sm', '--skip-merge', dest='skip_merge', action='store_true', help="PyInstaLive will not merge the downloaded livestream files.")
-    parser.add_argument('-o', '--organize', action='store_true', help="Create a folder for each user whose livestream(s) you have downloaded. The names of the folders will be their usernames. Then move the video(s) of each user into their associated folder.")
+    parser.add_argument('-sm', '--skip-merge', dest='skip_merge', action='store_true',
+                        help="PyInstaLive will not merge the downloaded livestream files.")
+    parser.add_argument('-o', '--organize', action='store_true',
+                        help="Create a folder for each user whose livestream(s) you have downloaded. The names of the folders will be their usernames. Then move the video(s) of each user into their associated folder.")
 
     # Workaround to 'disable' argument abbreviations
     parser.add_argument('--usernamx', help=argparse.SUPPRESS, metavar='IGNORE')
@@ -319,20 +325,43 @@ def run():
 
     if validate_inputs(config, args, unknown_args):
         if not args.username and not args.password:
-            pil.ig_api = auth.authenticate(username=pil.ig_user, password=pil.ig_pass)
+            while True:
+                try:
+                    this_time_index = random.randint(0, len(pil.ig_user) - 1)
+                except ValueError:
+                    logger.warn("No available account, please check 'AccountErrorLog.txt' for more detail")
+                    logger.separator()
+                    sys.exit()
+
+                this_time_account = pil.ig_user[this_time_index]
+                this_time_password = pil.ig_pass[this_time_index]
+                try:
+                    pil.ig_api = auth.authenticate(username=this_time_account, password=this_time_password)
+                    if pil.ig_api:
+                        if pil.dl_user or pil.args.downloadfollowing:
+                            downloader.start()
+                        elif pil.dl_batchusers:
+                            if not helpers.command_exists("pyinstalive") and not pil.winbuild_path:
+                                logger.error("PyInstaLive must be properly installed when using the -b argument.")
+                                logger.separator()
+                            else:
+                                dlfuncs.iterate_users(pil.dl_batchusers)
+                except auth.AccountSwitchError:
+                    with open('./AccountErrorLog.txt', 'a', encoding='utf8') as account_log:
+                        print('%s 账号出现问题' % pil.ig_user[this_time_index])
+                        theTime = datetime.datetime.now().strftime(ISOTIMEFORMAT)
+                        account_log.write('%s\nAccount Error: \nuser name: %s\npassword: %s \n----------\n' % (
+                            theTime, pil.ig_user.pop(this_time_index), pil.ig_pass.pop(this_time_index)))
+                finally:
+                    if args.sleeptime:
+                        time.sleep(args.sleeptime)
+                    else:
+                        time.sleep(60)
+
+
         elif (args.username and not args.password) or (args.password and not args.username):
             logger.warn("Missing --username or --password argument. Falling back to config file.")
             logger.separator()
             pil.ig_api = auth.authenticate(username=pil.ig_user, password=pil.ig_pass)
         elif args.username and args.password:
             pil.ig_api = auth.authenticate(username=args.username, password=args.password, force_use_login_args=True)
-
-        if pil.ig_api:
-            if pil.dl_user or pil.args.downloadfollowing:
-                downloader.start()
-            elif pil.dl_batchusers:
-                if not helpers.command_exists("pyinstalive") and not pil.winbuild_path:
-                    logger.error("PyInstaLive must be properly installed when using the -b argument.")
-                    logger.separator()
-                else:
-                    dlfuncs.iterate_users(pil.dl_batchusers)

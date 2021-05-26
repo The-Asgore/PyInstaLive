@@ -89,8 +89,8 @@ def get_user_id():
         logger.separator()
         return user_id
     elif user_id:
-        logger.info("Getting info for '{:s}' successful.".format(pil.dl_user))
-        logger.separator()
+        # logger.info("Getting info for '{:s}' successful.".format(pil.dl_user))
+        # logger.separator()
         return user_id
     else:
         return None

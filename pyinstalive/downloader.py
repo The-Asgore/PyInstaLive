@@ -1,3 +1,5 @@
+import sys
+
 try:
     import logger
     import helpers
@@ -59,3 +61,4 @@ def start():
             logger.warn("If this is not the case, manually delete the file '{:s}' and try again.".format(
                 pil.dl_user + '.lock'))
             logger.separator()
+            sys.exit()

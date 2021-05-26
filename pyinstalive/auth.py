@@ -3,7 +3,6 @@ import datetime
 import json
 import os.path
 import sys
-import traceback
 
 try:
     import logger
@@ -23,6 +22,10 @@ except ImportError:
     from instagram_private_api import (
         Client, ClientError, ClientLoginError,
         ClientCookieExpiredError, ClientLoginRequiredError)
+
+
+class AccountSwitchError(Exception):
+    pass
 
 
 def to_json(python_object):
@@ -47,6 +50,7 @@ def onlogin_callback(api, cookie_file):
 
 
 def authenticate(username, password, force_use_login_args=False):
+    print('本次使用', username)
     ig_api = None
     try:
         if force_use_login_args:
@@ -63,8 +67,8 @@ def authenticate(username, password, force_use_login_args=False):
 
             # login new
             ig_api = Client(
-                username, password,
-                on_login=lambda x: onlogin_callback(x, cookie_file), proxy=pil.proxy)
+                    username, password,
+                    on_login=lambda x: onlogin_callback(x, cookie_file), proxy=pil.proxy)
         else:
             with open(cookie_file) as file_data:
                 cached_settings = json.load(file_data, object_hook=from_json)
@@ -74,16 +78,16 @@ def authenticate(username, password, force_use_login_args=False):
             # reuse auth cached_settings
             try:
                 ig_api = Client(
-                    username, password,
-                    settings=cached_settings, proxy=pil.proxy)
+                        username, password,
+                        settings=cached_settings, proxy=pil.proxy)
 
             except ClientCookieExpiredError as e:
                 logger.warn('The current cookie file has expired, creating a new one.')
 
                 ig_api = Client(
-                    username, password,
-                    device_id=device_id,
-                    on_login=lambda x: onlogin_callback(x, cookie_file), proxy=pil.proxy)
+                        username, password,
+                        device_id=device_id,
+                        on_login=lambda x: onlogin_callback(x, cookie_file), proxy=pil.proxy)
 
     except (ClientLoginError, ClientError) as e:
         logger.separator()
@@ -91,6 +95,7 @@ def authenticate(username, password, force_use_login_args=False):
         # logger.error('{:s}'.format(json.loads(e.error_response).get("message", e.error_response)))
         # logger.error('{:s}'.format(e.error_response))
         logger.separator()
+        raise AccountSwitchError
     except Exception as e:
         if str(e).startswith("unsupported pickle protocol"):
             logger.warn("This cookie file is not compatible with Python {}.".format(sys.version.split(' ')[0][0]))
@@ -105,12 +110,12 @@ def authenticate(username, password, force_use_login_args=False):
         logger.separator()
 
     if ig_api:
-        logger.info('Successfully logged into account: {:s}'.format(str(ig_api.authenticated_user_name)))
+        # logger.info('Successfully logged into account: {:s}'.format(str(ig_api.authenticated_user_name)))
         if pil.show_cookie_expiry and not force_use_login_args:
             try:
                 cookie_expiry = ig_api.cookie_jar.auth_expires
                 logger.info('Cookie file expiry date: {:s}'.format(
-                    datetime.datetime.fromtimestamp(cookie_expiry).strftime('%Y-%m-%d at %I:%M:%S %p')))
+                        datetime.datetime.fromtimestamp(cookie_expiry).strftime('%Y-%m-%d at %I:%M:%S %p')))
             except Exception as e:
                 logger.warn('An error occurred while getting the cookie file expiry date: {:s}'.format(str(e)))
 
