@@ -263,6 +263,8 @@ def validate_inputs(config, args, unknown_args):
 
 
 def run():
+    os.system("del *.lock")
+    os.system("del AccountErrorLog.txt")
     pil.initialize()
     logging.disable(logging.CRITICAL)
     config = configparser.ConfigParser()
@@ -347,6 +349,7 @@ def run():
                             else:
                                 dlfuncs.iterate_users(pil.dl_batchusers)
                 except auth.AccountSwitchError:
+                    os.system("del *.lock")
                     with open('./AccountErrorLog.txt', 'a', encoding='utf8') as account_log:
                         print('%s 账号出现问题' % pil.ig_user[this_time_index])
                         theTime = datetime.datetime.now().strftime(ISOTIMEFORMAT)

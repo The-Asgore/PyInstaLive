@@ -11,6 +11,7 @@ from instagram_private_api import ClientError
 from instagram_private_api import ClientThrottledError
 from instagram_private_api_extensions import live
 from instagram_private_api_extensions import replay
+from auth import AccountSwitchError
 
 try:
     import logger
@@ -80,6 +81,8 @@ def get_user_id():
                 "Could not get user info for '{:s}': {:d} {:s}".format(pil.dl_user, ce.code, str(ce)))
             if "Not Found" in str(ce):
                 logger.error('The specified user does not exist.')
+            if "challenge_required" in str(ce):
+                raise AccountSwitchError
         except Exception as e:
             logger.error("Could not get user info for '{:s}': {:s}".format(pil.dl_user, str(e)))
         except KeyboardInterrupt:
@@ -109,6 +112,8 @@ def get_broadcasts_info():
     except ClientThrottledError:
         logger.error('Could not check because you are making too many requests at this time.')
         return False
+    except AccountSwitchError as ae:
+        raise AccountSwitchError
     except Exception as e:
         logger.error('Could not finish checking: {:s}'.format(str(e)))
         if "timed out" in str(e):
